@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,6 +18,8 @@ class ApiService {
   // Headers con autenticación
   Future<Map<String, String>> get authHeaders async {
     final token = await storage.read(key: 'access_token');
+    print('🔑 Token recuperado del storage: ${token?.substring(0, 20)}...'); // Solo primeros 20 caracteres
+    
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -38,6 +41,11 @@ class ApiService {
           'username': username,
           'password': password,
         }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Tiempo de espera agotado');
+        },
       );
 
       print('📡 Status Code: ${response.statusCode}');
@@ -50,7 +58,10 @@ class ApiService {
         await storage.write(key: 'access_token', value: data['access']);
         await storage.write(key: 'refresh_token', value: data['refresh']);
         
-        print('✅ Login exitoso');
+        // Verificar que se guardó correctamente
+        final savedToken = await storage.read(key: 'access_token');
+        print('✅ Login exitoso - Token guardado: ${savedToken?.substring(0, 20)}...');
+        
         return {'success': true, 'data': data};
       } else {
         print('❌ Login fallido');
@@ -63,6 +74,12 @@ class ApiService {
           'statusCode': response.statusCode,
         };
       }
+    } on TimeoutException catch (e) {
+      print('⏱️ TimeoutException: $e');
+      return {
+        'success': false, 
+        'error': 'Tiempo de espera agotado',
+      };
     } catch (e) {
       print('💥 Excepción en login: $e');
       return {'success': false, 'error': e.toString()};
@@ -74,8 +91,12 @@ class ApiService {
     try {
       final refreshToken = await storage.read(key: 'refresh_token');
       
-      if (refreshToken == null) return false;
+      if (refreshToken == null) {
+        print('❌ No hay refresh token disponible');
+        return false;
+      }
 
+      print('🔄 Intentando refrescar token...');
       final response = await http.post(
         Uri.parse('$baseUrl/token/refresh/'),
         headers: headers,
@@ -85,10 +106,13 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         await storage.write(key: 'access_token', value: data['access']);
+        print('✅ Token refrescado exitosamente');
         return true;
       }
+      print('❌ Error al refrescar token: ${response.statusCode}');
       return false;
     } catch (e) {
+      print('💥 Error en refreshToken: $e');
       return false;
     }
   }
@@ -96,10 +120,19 @@ class ApiService {
   // GET Request
   Future<Map<String, dynamic>> get(String endpoint) async {
     try {
+      final url = '$baseUrl$endpoint';
+      final headers = await authHeaders;
+      
+      print('📡 GET Request a: $url');
+      print('📋 Headers: ${headers.keys.join(", ")}');
+      
       final response = await http.get(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: await authHeaders,
+        Uri.parse(url),
+        headers: headers,
       );
+
+      print('📡 Response Status: ${response.statusCode}');
+      print('📄 Response: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
 
       if (response.statusCode == 200) {
         return {
@@ -107,13 +140,15 @@ class ApiService {
           'data': jsonDecode(response.body),
         };
       } else if (response.statusCode == 401) {
+        print('⚠️ Token expirado o inválido, intentando refrescar...');
         // Token expirado, intentar refrescar
         final refreshed = await refreshToken();
         if (refreshed) {
           // Reintentar la petición
+          print('🔄 Reintentando petición GET...');
           return get(endpoint);
         }
-        return {'success': false, 'error': 'Unauthorized'};
+        return {'success': false, 'error': 'Unauthorized - Token inválido'};
       } else {
         return {
           'success': false,
@@ -121,6 +156,7 @@ class ApiService {
         };
       }
     } catch (e) {
+      print('💥 Error en GET: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
@@ -216,6 +252,7 @@ class ApiService {
 
   // LOGOUT
   Future<void> logout() async {
+    print('👋 Cerrando sesión...');
     await storage.delete(key: 'access_token');
     await storage.delete(key: 'refresh_token');
   }

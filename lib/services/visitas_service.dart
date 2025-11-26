@@ -12,13 +12,33 @@ class VisitasService {
       final response = await _apiService.get('/visitas/');
       
       if (response['success']) {
-        // El ViewSet de DRF devuelve una lista directamente
-        List<dynamic> data = response['data'];
-        return data.map((json) => Visita.fromJson(json)).toList();
+        final data = response['data'];
+        
+        // DRF puede devolver una lista directa o un objeto paginado
+        List<dynamic> visitasJson;
+        
+        if (data is List) {
+          // Respuesta sin paginación: [...]
+          visitasJson = data;
+        } else if (data is Map<String, dynamic>) {
+          // Respuesta con paginación: {"count": 10, "results": [...]}
+          if (data.containsKey('results')) {
+            visitasJson = data['results'] as List<dynamic>;
+          } else {
+            // Si no tiene 'results', intentar convertir el mapa completo
+            visitasJson = [data];
+          }
+        } else {
+          throw Exception('Formato de respuesta inesperado');
+        }
+        
+        print('📊 Total de visitas recibidas: ${visitasJson.length}');
+        return visitasJson.map((json) => Visita.fromJson(json)).toList();
       } else {
         throw Exception('Error al obtener visitas: ${response['error']}');
       }
     } catch (e) {
+      print('💥 Error en obtenerVisitas: $e');
       throw Exception('Error de conexión: $e');
     }
   }
@@ -35,6 +55,7 @@ class VisitasService {
         throw Exception('Error al obtener la visita: ${response['error']}');
       }
     } catch (e) {
+      print('💥 Error en obtenerVisita: $e');
       throw Exception('Error de conexión: $e');
     }
   }
