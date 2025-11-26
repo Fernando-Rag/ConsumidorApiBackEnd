@@ -27,14 +27,21 @@ class ApiService {
   // LOGIN - Obtener tokens JWT
   Future<Map<String, dynamic>> login(String username, String password) async {
     try {
+      final url = '$baseUrl/token/';
+      print('🔐 Intentando login en: $url');
+      print('👤 Usuario: $username');
+      
       final response = await http.post(
-        Uri.parse('$baseUrl/token/'), // Ajusta según tu endpoint
+        Uri.parse(url),
         headers: headers,
         body: jsonEncode({
           'username': username,
           'password': password,
         }),
       );
+
+      print('📡 Status Code: ${response.statusCode}');
+      print('📄 Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -43,14 +50,21 @@ class ApiService {
         await storage.write(key: 'access_token', value: data['access']);
         await storage.write(key: 'refresh_token', value: data['refresh']);
         
+        print('✅ Login exitoso');
         return {'success': true, 'data': data};
       } else {
+        print('❌ Login fallido');
+        final errorBody = response.body.isNotEmpty 
+            ? jsonDecode(response.body) 
+            : {'detail': 'Error desconocido'};
         return {
           'success': false,
-          'error': jsonDecode(response.body),
+          'error': errorBody,
+          'statusCode': response.statusCode,
         };
       }
     } catch (e) {
+      print('💥 Excepción en login: $e');
       return {'success': false, 'error': e.toString()};
     }
   }
