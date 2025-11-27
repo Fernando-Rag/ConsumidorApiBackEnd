@@ -20,6 +20,8 @@ class _VisitasScreenState extends State<VisitasScreen> {
   bool _isLoading = true;
   String _errorMessage = '';
   final TextEditingController _searchController = TextEditingController();
+  bool _soloHoy = true;
+  String _query = '';
 
   @override
   void initState() {
@@ -43,7 +45,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
       final visitas = await _visitasService.obtenerVisitas();
       setState(() {
         _visitas = visitas;
-        _visitasFiltradas = visitas;
+        _aplicarFiltros();
         _isLoading = false;
       });
     } catch (e) {
@@ -54,13 +56,24 @@ class _VisitasScreenState extends State<VisitasScreen> {
     }
   }
 
-  void _filtrarVisitas(String query) {
+  void _aplicarFiltros() {
+    List<Visita> resultado = _visitas;
+
+    if (_soloHoy) {
+      resultado = _visitasService.filtrarPorFecha(resultado, DateTime.now());
+    }
+
+    if (_query.isNotEmpty) {
+      resultado = _visitasService.buscarPorNombre(resultado, _query);
+    }
+
+    _visitasFiltradas = resultado;
+  }
+
+  void _onBuscarChanged(String query) {
     setState(() {
-      if (query.isEmpty) {
-        _visitasFiltradas = _visitas;
-      } else {
-        _visitasFiltradas = _visitasService.buscarPorNombre(_visitas, query);
-      }
+      _query = query;
+      _aplicarFiltros();
     });
   }
 
@@ -93,6 +106,31 @@ class _VisitasScreenState extends State<VisitasScreen> {
       ),
       body: Column(
         children: [
+          // Filtro "Solo hoy"
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.today),
+                    SizedBox(width: 8),
+                    Text('Solo mostrar visitas de hoy'),
+                  ],
+                ),
+                Switch(
+                  value: _soloHoy,
+                  onChanged: (val) {
+                    setState(() {
+                      _soloHoy = val;
+                      _aplicarFiltros();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
           // Barra de búsqueda
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -106,7 +144,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _searchController.clear();
-                          _filtrarVisitas('');
+                          _onBuscarChanged('');
                         },
                       )
                     : null,
@@ -114,7 +152,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onChanged: _filtrarVisitas,
+              onChanged: _onBuscarChanged,
             ),
           ),
           // Contenido principal
